@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Defender PRO - Edição Ultimate</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(180deg, #000011, #000022);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            color: white;
+            overflow-x: hidden;
+        }
+        canvas {
+            border: 3px solid #00ffff;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.6);
+            border-radius: 10px;
+            max-width: 100vw;
+            max-height: 80vh;
+        }
+        .ui {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 10px 0;
+        }
+        .stat {
+            background: rgba(0, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid #00ffff;
+        }
+        button {
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            padding: 12px 24px;
+            background: linear-gradient(45deg, #ff44ff, #8844ff);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 15px rgba(255, 68, 255, 0.5);
+            margin: 5px;
+        }
+        button:hover, button.active {
+            transform: scale(1.05);
+            box-shadow: 0 0 25px rgba(255, 68, 255, 0.8);
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .mobile-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            gap: 15px;
+        }
+        .mobile-btn {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: rgba(0, 255, 255, 0.3);
+            border: 3px solid #00ffff;
+            color: #00ffff;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        /* Créditos fixos no canto inferior */
+        .credits {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: rgba(0, 255, 255, 0.7);
+            text-shadow: 0 0 5px rgba(0, 255, 255, 0.3);
+            z-index: 1000;
+            pointer-events: none;
+        }
+        @media (max-width: 900px) {
+            canvas { width: 100vw; height: 70vh; max-width: 800px; max-height: 600px; }
+            .mobile-controls { display: flex; }
+            .stats { flex-direction: column; align-items: center; }
+            .credits { font-size: 10px; bottom: 80px; } /* Ajusta posição em mobile */
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <div class="ui">
+        <div class="stats" id="statsContainer"></div>
+        <div id="coinsDisplay">💰 0</div>
+    </div>
+
+    <!-- Créditos fixos no canto inferior -->
+    <div class="credits">
+        Feito por: Vitor Rochinski S. G. Juvenal e Yasmin R. Kachel
+    </div>
+
+    <div class="mobile-controls">
+        <button class="mobile-btn" ontouchstart="handleTouch('left')" ontouchend="handleTouchEnd('left')">←</button>
+        <button class="mobile-btn" ontouchstart="handleTouch('right')" ontouchend="handleTouchEnd('right')">→</button>
+        <button class="mobile-btn" ontouchstart="handleTouch('shoot')" ontouchend="handleTouchEnd('shoot')">🔥</button>
+    </div>
+
+    <script>
+        // ===== SISTEMA DE ÁUDIO =====
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playShootSound() {
+            initAudio();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function playExplosionSound() {
+            initAudio();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.2);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.2);
+        }
+
+        function playVictorySound() {
+            initAudio();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.frequency.setValueAtTime(523, audioCtx.currentTime);
+            osc.frequency.setValueAtTime(659, audioCtx.currentTime + 0.2);
+            osc.frequency.setValueAtTime(784, audioCtx.currentTime + 0.4);
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+            osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.6);
+        }
+
+        // ===== CONTROLES MOBILE =====
+        let touchKeys = {};
+        window.handleTouch = function(action) { touchKeys[action] = true; }
+        window.handleTouchEnd = function(action) { touchKeys[action] = false; }
+
+        // ===== CLASSES DO JOGO =====
+        class Particle {
+            constructor(x, y, color, velocity) {
+                this.x = x; this.y = y;
+                this.vx = velocity.x + (Math.random() - 0.5) * 4;
+                this.vy = velocity.y + (Math.random() - 0.5) * 4;
+                this.life = 1.0; this.decay = Math.random() * 0.02 + 0.01;
+                this.size = Math.random() * 4 + 2; this.color = color;
+            }
+            update() { 
+                this.x += this.vx; this.y += this.vy; 
+                this.life -= this.decay; this.vy += 0.1; 
+            }
+            draw(ctx) {
+                ctx.save(); ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fill(); ctx.restore();
+            }
+        }
+
+        class Stars {
+            constructor(canvasWidth, canvasHeight) {
+                this.canvasWidth = canvasWidth;
+                this.canvasHeight = canvasHeight;
+                this.stars = []; this.planets = []; this.particles = [];
+                for (let i = 0; i < 150; i++) {
+                    this.stars.push({
+                        x: Math.random() * canvasWidth, y: Math.random() * canvasHeight,
+                        size: Math.random() * 2 + 0.5, brightness: Math.random(),
+                        twinkleSpeed: Math.random() * 0.02 + 0.01, twinkleOffset: Math.random() * Math.PI * 2
+                    });
+                }
+                this.planets = [
+                    { x: 120, y: 150, radius: 25, color: '#ffff44', glow: true, speed: 0.1 },
+                    { x: 650, y: 220, radius: 18, color: '#4488ff', glow: false, speed: 0.05 },
+                    { x: 200, y: 400, radius: 22, color: '#aa44ff', glow: true, speed: 0.08 },
+                    { x: 550, y: 450, radius: 15, color: '#44ff88', glow: false, speed: 0.03 },
+                    { x: 70, y: 500, radius: 12, color: '#ff8844', glow: true, speed: 0.12 }
+                ];
+            }
+            addExplosion(x, y) { for (let i = 0; i < 15; i++) this.particles.push(new Particle(x, y, '#ff4444', {x: 0, y: 0})); }
+            addShieldParticles(x, y) { for (let i = 0; i < 8; i++) this.particles.push(new Particle(x, y, '#00ffff', {x: 0, y: 0})); }
+            update(time) {
+                this.stars.forEach(star => star.brightness = 0.5 + 0.5 * Math.sin(time * star.twinkleSpeed + star.twinkleOffset));
+                this.planets.forEach(planet => planet.rotation = (planet.rotation || 0) + planet.speed);
+                this.particles = this.particles.filter(p => { p.update(); return p.life > 0; });
+            }
+            draw(ctx, time) {
+                this.update(time);
+                this.particles.forEach(p => p.draw(ctx));
+                this.stars.forEach(star => {
+                    const gradient = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, star.size * 2);
+                    gradient.addColorStop(0, `rgba(255,255,255,${star.brightness})`);
+                    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+                    ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(star.x, star.y, star.size * 2, 0, Math.PI * 2); ctx.fill();
+                });
+                this.planets.forEach(planet => {
+                    if (planet.glow) {
+                        const glowGradient = ctx.createRadialGradient(planet.x, planet.y, 0, planet.x, planet.y, planet.radius * 2.5);
+                        glowGradient.addColorStop(0, planet.color); glowGradient.addColorStop(0.3, `${planet.color}80`); glowGradient.addColorStop(1, 'rgba(0,0,0,0)');
+                        ctx.fillStyle = glowGradient; ctx.beginPath(); ctx.arc(planet.x, planet.y, planet.radius * 2.5, 0, Math.PI * 2); ctx.fill();
+                    }
+                    const planetGradient = ctx.createRadialGradient(planet.x - 5, planet.y - 5, 0, planet.x, planet.y, planet.radius);
+                    planetGradient.addColorStop(0, '#ffffff'); planetGradient.addColorStop(0.7, planet.color); planetGradient.addColorStop(1, `${planet.color}cc`);
+                    ctx.fillStyle = planetGradient; ctx.beginPath(); ctx.arc(planet.x, planet.y, planet.radius, 0, Math.PI * 2); ctx.fill();
+                });
+            }
+        }
+
+        class Projectile {
+            constructor(x, y, speed, damage) {
+                this.x = x; this.y = y; this.width = 6; this.height = 14;
+                this.speed = speed; this.damage = damage;
+            }
+            update() { this.y -= this.speed; }
+            draw(ctx) {
+                ctx.fillStyle = '#00ff00'; ctx.fillRect(this.x, this.y, this.width, this.height);
+                ctx.fillStyle = '#ffffff'; ctx.fillRect(this.x + 1, this.y + 2, 4, 10);
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.4)'; ctx.fillRect(this.x + 1, this.y + 12, 4, 8);
+            }
+        }
+
+        class Enemy {
+            constructor(x, y, level, canvasWidth) {
+                this.x = x; 
+                this.y = y; 
+                this.width = 35; 
+                this.height = 35;
+                this.canvasWidth = canvasWidth;
+                this.level = level;
+                // ✅ VIDA BASE DO VERMELHO: 5 + 10*(nível-1)
+                // ✅ Exemplo: Nível 1=5HP, Nível 2=15HP, Nível 3=25HP, etc.
+                // ✅ Inimigos laranjas têm METADE da vida dos vermelhos
+                this.type = Math.random() < 0.3 ? 1 : 0; // 1=laranja (zigzag), 0=vermelho (reta)
+                this.maxHealth = (5 + (level - 1) * 10) * (this.type === 1 ? 0.5 : 1);
+                this.health = this.maxHealth;
+                this.speed = 0.5 + (level - 1) * 0.2;
+            }
+            
+            update() {
+                this.y += this.speed;
+                
+                if (this.type === 1) {
+                    this.x += Math.sin(this.y * 0.01) * 2;
+                    const leftWall = 10;
+                    const rightWall = this.canvasWidth - this.width - 10;
+                    if (this.x < leftWall) this.x = leftWall;
+                    if (this.x > rightWall) this.x = rightWall;
+                }
+            }
+            
+            draw(ctx) {
+                const healthPercent = this.health / this.maxHealth;
+                
+                if (this.type === 1) {
+                    // 🔶 INIMIGO LARANJA (zigzag, METADE da vida)
+                    ctx.fillStyle = '#ff8800'; 
+                    ctx.fillRect(this.x - 5, this.y - 5, 45, 45);
+                    ctx.strokeStyle = '#ffff00'; 
+                    ctx.lineWidth = 3; 
+                    ctx.strokeRect(this.x - 5, this.y - 5, 45, 45);
+                    
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 12px Courier New';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('ZIGZAG', this.x + 17, this.y + 28);
+                } else {
+                    // 🔴 INIMIGO VERMELHO (reta, VIDA COMPLETA: 5 + 10*(nível-1))
+                    ctx.fillStyle = '#ff0000'; 
+                    ctx.fillRect(this.x, this.y, this.width, this.height);
+                    ctx.strokeStyle = '#ffffff'; 
+                    ctx.lineWidth = 1; 
+                    ctx.strokeRect(this.x, this.y, this.width, this.height);
+                }
+                
+                // Barra de vida
+                const barWidth = this.type === 1 ? 45 : 35;
+                ctx.fillStyle = '#ff0000'; 
+                ctx.fillRect(this.x, this.y - 8, barWidth, 4);
+                ctx.fillStyle = '#00ff00'; 
+                ctx.fillRect(this.x, this.y - 8, barWidth * healthPercent, 4);
+                
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(this.x, this.y - 8, barWidth, 4);
+            }
+            
+            isOffScreen() { 
+                return this.y > 650; 
+            }
+        }
+
+        class Player {
+            constructor(upgrades) {
+                this.x = 380; this.y = 540; this.width = 40; this.height = 40;
+                this.baseSpeed = 5; 
+                // ✅ MODIFICAÇÃO: Velocidade agora usa 0.25x por upgrade
+                this.speed = this.baseSpeed + upgrades.movement * 0.25;
+                this.shield = 0;
+            }
+            update(keys, touchKeys, upgrades) {
+                // ✅ MODIFICAÇÃO: Velocidade agora usa 0.25x por upgrade
+                this.speed = this.baseSpeed + upgrades.movement * 0.25;
+                if (keys['ArrowLeft'] || keys['a'] || keys['A'] || touchKeys.left) this.x -= this.speed;
+                if (keys['ArrowRight'] || keys['d'] || keys['D'] || touchKeys.right) this.x += this.speed;
+                this.x = Math.max(0, Math.min(800 - this.width, this.x));
+                if (this.shield > 0) this.shield--;
+            }
+            draw(ctx, stars) {
+                if (this.shield > 0) {
+                    stars.addShieldParticles(this.x + 20, this.y + 20);
+                    ctx.strokeStyle = `rgba(0, 255, 255, ${0.5 + 0.5 * Math.sin(Date.now() * 0.01)})`;
+                    ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(this.x + 20, this.y + 20, 25, 0, Math.PI * 2); ctx.stroke();
+                }
+                ctx.fillStyle = '#00ffff'; ctx.fillRect(this.x, this.y, this.width, this.height);
+                ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.strokeRect(this.x, this.y, this.width, this.height);
+                ctx.fillStyle = '#ffffff'; ctx.fillRect(this.x + 15, this.y - 8, 10, 12);
+            }
+        }
+
+        // ===== SISTEMA DE PROGRESSÃO E SALVAMENTO =====
+        class GameData {
+            constructor() {
+                this.coins = parseInt(localStorage.getItem('spaceDefenderCoins')) || 0;
+                this.upgrades = {
+                    fireRate: parseInt(localStorage.getItem('spaceDefenderFireRate')) || 0,
+                    projectileSpeed: parseInt(localStorage.getItem('spaceDefenderProjSpeed')) || 0,
+                    damage: parseInt(localStorage.getItem('spaceDefenderDamage')) || 0,
+                    movement: parseInt(localStorage.getItem('spaceDefenderMovement')) || 0
+                };
+                this.completedLevels = JSON.parse(localStorage.getItem('spaceDefenderLevels')) || {};
+            }
+            save() {
+                localStorage.setItem('spaceDefenderCoins', this.coins);
+                localStorage.setItem('spaceDefenderFireRate', this.upgrades.fireRate);
+                localStorage.setItem('spaceDefenderProjSpeed', this.upgrades.projectileSpeed);
+                localStorage.setItem('spaceDefenderDamage', this.upgrades.damage);
+                localStorage.setItem('spaceDefenderMovement', this.upgrades.movement);
+                localStorage.setItem('spaceDefenderLevels', JSON.stringify(this.completedLevels));
+            }
+            addCoins(amount) {
+                this.coins += amount;
+                this.save();
+                this.updateUI();
+            }
+            buyUpgrade(type) {
+                if (this.coins >= 100) {
+                    this.coins -= 100;
+                    this.upgrades[type]++;
+                    this.save();
+                    this.updateUI();
+                    return true;
+                }
+                return false;
+            }
+            getUpgradeStats() {
+                // ✅ MODIFICAÇÃO: Cadência base agora é 1x (1.0s), evolui para baixo DIMINUÍDO para 0.05x
+                const baseFireRate = 1.0;
+                return {
+                    fireRate: Math.max(0.3, baseFireRate - this.upgrades.fireRate * 0.05),
+                    projectileSpeed: 8 + this.upgrades.projectileSpeed * 0.25,
+                    damage: 5 + this.upgrades.damage * 5,
+                    // ✅ MODIFICAÇÃO: Movement agora retorna o valor direto para usar 0.25x no Player
+                    movement: this.upgrades.movement * 0.25
+                };
+            }
+            updateUI() {
+                document.getElementById('coinsDisplay').textContent = `💰 ${this.coins}`;
+                const statsContainer = document.getElementById('statsContainer');
+                const upgrades = this.getUpgradeStats();
+                statsContainer.innerHTML = `
+                    <div class="stat">🔥 Cadência: ${upgrades.fireRate.toFixed(1)}x</div>
+                    <div class="stat">📈 Vel. Tiro: ${(upgrades.projectileSpeed).toFixed(1)}x</div>
+                    <div class="stat">⚔️ Dano: ${upgrades.damage}</div>
+                    <div class="stat">🏃 Vel. Player: ${(5 + upgrades.movement).toFixed(2)}x</div>
+                `;
+            }
+            isLevelUnlocked(level) {
+                return level === 1 || this.completedLevels[`level${level - 1}`];
+            }
+        }
+
+        // ===== GAME MANAGER PRINCIPAL =====
+        class GameManager {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.gameData = new GameData();
+                this.gameData.updateUI();
+                this.gameState = 'mainMenu';
+                this.currentLevel = 1;
+                this.canvasWidth = 800;
+                this.canvasHeight = 600;
+                this.resetGame();
+                this.stars = new Stars(this.canvasWidth, this.canvasHeight);
+                this.keys = {};
+                this.time = 0;
+                this.gameTime = 0;
+                this.lastShot = 0;
+                this.setupEventListeners();
+                this.gameLoop();
+            }
+
+            resetGame() {
+                this.player = null;
+                this.projectiles = [];
+                this.enemies = [];
+                this.victoryTimer = 120;
+            }
+
+            setupEventListeners() {
+                window.addEventListener('keydown', (e) => {
+                    this.keys[e.code === 'Space' ? 'Space' : e.key] = true;
+                    if (e.code === 'Space') e.preventDefault();
+                });
+                window.addEventListener('keyup', (e) => {
+                    this.keys[e.code === 'Space' ? 'Space' : e.key] = false;
+                });
+                this.canvas.addEventListener('click', (e) => this.handleClick(e));
+                window.addEventListener('resize', () => this.resizeCanvas());
+            }
+
+            resizeCanvas() {
+                const maxWidth = Math.min(800, window.innerWidth - 40);
+                const maxHeight = Math.min(600, window.innerHeight - 100);
+                this.canvas.width = maxWidth;
+                this.canvas.height = maxHeight;
+                this.canvasWidth = maxWidth;
+                this.canvasHeight = maxHeight;
+                this.stars = new Stars(this.canvasWidth, this.canvasHeight);
+            }
+
+            handleClick(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                if (this.gameState === 'mainMenu') {
+                    if (x > 50 && x < 250 && y > 500 && y < 550) this.gameState = 'shop';
+                    else if (x > 300 && x < 500 && y > 500 && y < 550) this.gameState = 'levelSelect';
+                } 
+                else if (this.gameState === 'levelSelect') {
+                    if (x > 650 && x < 750 && y > 50 && y < 100) {
+                        this.gameState = 'mainMenu';
+                        return;
+                    }
+                    
+                    for (let i = 1; i <= 10; i++) {
+                        const col = (i - 1) % 5;
+                        const row = Math.floor((i - 1) / 5);
+                        const btnX = col * 150 + 50;
+                        const btnY = row * 100 + 100;
+                        
+                        if (x >= btnX && x <= btnX + 140 && 
+                            y >= btnY && y <= btnY + 80 &&
+                            this.gameData.isLevelUnlocked(i)) {
+                            this.currentLevel = i;
+                            this.startLevel();
+                            return;
+                        }
+                    }
+                } 
+                else if (this.gameState === 'shop') {
+                    if (x > 50 && x < 250 && y > 200 && y < 250 && this.gameData.buyUpgrade('fireRate')) {}
+                    if (x > 300 && x < 500 && y > 200 && y < 250 && this.gameData.buyUpgrade('projectileSpeed')) {}
+                    if (x > 550 && x < 750 && y > 200 && y < 250 && this.gameData.buyUpgrade('damage')) {}
+                    if (x > 50 && x < 250 && y > 350 && y < 400 && this.gameData.buyUpgrade('movement')) {}
+                    if (x > 650 && x < 750 && y > 50 && y < 100) this.gameState = 'mainMenu';
+                } 
+                else if (this.gameState === 'victory' || this.gameState === 'gameOver') {
+                    if (x > 250 && x < 550 && y > 400 && y < 450) {
+                        this.gameState = 'levelSelect';
+                        this.resetGame();
+                    }
+                    if (x > this.canvasWidth - 200 && x < this.canvasWidth - 50 && y > 50 && y < 100) {
+                        this.gameState = 'mainMenu';
+                    }
+                }
+            }
+
+            startLevel() {
+                this.gameState = 'playing';
+                const upgrades = this.gameData.getUpgradeStats();
+                this.player = new Player(upgrades);
+                this.projectiles = []; 
+                this.enemies = [];
+                this.gameTime = 0;
+                this.victoryTimer = 120;
+                this.enemySpawnTimer = 0;
+                this.enemySpawnRate = Math.max(30, 120 - (this.currentLevel - 1) * 8);
+            }
+
+            update() {
+                this.time += 0.016;
+                if (this.gameState !== 'playing') return;
+
+                const upgrades = this.gameData.getUpgradeStats();
+                this.player.update(this.keys, touchKeys, upgrades);
+
+                const cooldown = upgrades.fireRate * 1000;
+                if ((this.keys[' '] || this.keys['Space'] || touchKeys.shoot) && Date.now() - this.lastShot > cooldown) {
+                    playShootSound();
+                    this.projectiles.push(new Projectile(this.player.x + 18, this.player.y, upgrades.projectileSpeed, upgrades.damage));
+                    this.lastShot = Date.now();
+                }
+
+                this.enemySpawnTimer++;
+                if (this.enemySpawnTimer > this.enemySpawnRate) {
+                    const margin = 40;
+                    const x = margin + Math.random() * (this.canvasWidth - margin * 2 - 35);
+                    this.enemies.push(new Enemy(x, -45, this.currentLevel, this.canvasWidth));
+                    this.enemySpawnTimer = 0;
+                }
+
+                this.projectiles = this.projectiles.filter(p => { p.update(); return p.y > -20; });
+                this.enemies = this.enemies.filter(e => { 
+                    e.update(); 
+                    if (e.y > this.canvasHeight - 20) {
+                        this.gameState = 'gameOver';
+                        return false;
+                    }
+                    return this.gameState === 'playing' && !e.isOffScreen();
+                });
+
+                this.gameTime += 0.016;
+                this.victoryTimer = Math.max(0, 120 - this.gameTime);
+                if (this.victoryTimer <= 0) {
+                    playVictorySound();
+                    this.gameData.addCoins(100 * this.currentLevel);
+                    this.gameData.completedLevels[`level${this.currentLevel}`] = true;
+                    this.gameData.save();
+                    this.gameState = 'victory';
+                }
+
+                this.checkCollisions();
+            }
+
+            checkCollisions() {
+                const upgrades = this.gameData.getUpgradeStats();
+                for (let i = this.projectiles.length - 1; i >= 0; i--) {
+                    const proj = this.projectiles[i];
+                    for (let j = this.enemies.length - 1; j >= 0; j--) {
+                        const enemy = this.enemies[j];
+                        if (this.isColliding(proj, enemy)) {
+                            enemy.health -= proj.damage;
+                            this.projectiles.splice(i, 1);
+                            this.stars.addExplosion(enemy.x + 22, enemy.y + 22);
+                            playExplosionSound();
+                            if (enemy.health <= 0) {
+                                this.enemies.splice(j, 1);
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                for (let enemy of this.enemies) {
+                    if (this.isColliding(this.player, enemy) && this.player.shield === 0) {
+                        this.gameState = 'gameOver';
+                    }
+                }
+            }
+
+            isColliding(a, b) {
+                return a.x < b.x + b.width && a.x + a.width > b.x &&
+                       a.y < b.y + b.height && a.y + a.height > b.y;
+            }
+
+            draw() {
+                const bgGradient = this.ctx.createLinearGradient(0, 0, 0, this.canvasHeight);
+                bgGradient.addColorStop(0, '#000011'); bgGradient.addColorStop(1, '#000022');
+                this.ctx.fillStyle = bgGradient; 
+                this.ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+                
+                this.ctx.strokeStyle = '#00ffff';
+                this.ctx.lineWidth = 4;
+                this.ctx.setLineDash([10, 10]);
+                this.ctx.beginPath();
+                this.ctx.moveTo(10, 0);
+                this.ctx.lineTo(10, this.canvasHeight);
+                this.ctx.moveTo(this.canvasWidth - 10, 0);
+                this.ctx.lineTo(this.canvasWidth - 10, this.canvasHeight);
+                this.ctx.stroke();
+                this.ctx.setLineDash([]);
+                
+                this.stars.draw(this.ctx, this.time);
+
+                if (this.gameState === 'mainMenu') this.drawMainMenu();
+                else if (this.gameState === 'levelSelect') this.drawLevelSelect();
+                else if (this.gameState === 'shop') this.drawShop();
+                else if (this.gameState === 'playing') this.drawPlaying();
+                else if (this.gameState === 'victory') this.drawVictory();
+                else if (this.gameState === 'gameOver') this.drawGameOver();
+            }
+
+            drawMainMenu() {
+                this.ctx.fillStyle = '#00ffff'; this.ctx.font = 'bold 48px Courier New'; this.ctx.textAlign = 'center';
+                this.ctx.fillText('SPACE DEFENDER', this.canvasWidth/2, 220);
+                this.ctx.fillText('ULTIMATE', this.canvasWidth/2, 270);
+
+                this.ctx.fillStyle = '#44ff44'; this.ctx.fillRect(50, 500, 200, 50);
+                this.ctx.fillStyle = '#000000'; this.ctx.font = 'bold 24px Courier New';
+                this.ctx.fillText('LOJA', 150, 530); 
+                this.ctx.strokeStyle = '#ffffff'; this.ctx.lineWidth = 2; this.ctx.strokeRect(50, 500, 200, 50);
+
+                this.ctx.fillStyle = '#ff44ff'; this.ctx.fillRect(300, 500, 200, 50);
+                this.ctx.fillStyle = '#000000'; this.ctx.fillText('FASES', 400, 530);
+                this.ctx.strokeStyle = '#ffffff'; this.ctx.lineWidth = 2; this.ctx.strokeRect(300, 500, 200, 50);
+            }
+
+            drawLevelSelect() {
+                this.ctx.fillStyle = 'rgba(0,0,0,0.8)'; this.ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+                this.ctx.fillStyle = '#00ffff'; this.ctx.font = 'bold 36px Courier New'; this.ctx.textAlign = 'center';
+                this.ctx.fillText('SELECIONE A FASE', this.canvasWidth/2, 40);
+
+                for (let i = 1; i <= 10; i++) {
+                    const col = (i - 1) % 5; 
+                    const row = Math.floor((i - 1) / 5);
+                    const x = col * 150 + 50; 
+                    const y = row * 100 + 100;
+                    
+                    const completed = this.gameData.completedLevels[`level${i}`];
+                    this.ctx.fillStyle = completed ? '#44ff44' : (this.gameData.isLevelUnlocked(i) ? '#ff44ff' : '#666666');
+                    this.ctx.fillRect(x, y, 140, 80);
+                    this.ctx.fillStyle = '#000000'; this.ctx.font = 'bold 28px Courier New';
+                    this.ctx.fillText(`FASE ${i}`, x + 70, y + 50);
+                    this.ctx.strokeStyle = '#ffffff'; this.ctx.lineWidth = 2; this.ctx.strokeRect(x, y, 140, 80);
+                }
+
+                this.ctx.fillStyle = '#ff4444'; this.ctx.fillRect(650, 50, 100, 50);
+                this.ctx.fillStyle = '#ffffff'; this.ctx.fillText('← VOLTAR', 700, 82);
+            }
+
+            drawShop() {
+                this.ctx.fillStyle = 'rgba(0,0,0,0.9)'; this.ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+                this.ctx.fillStyle = '#00ffff'; this.ctx.font = 'bold 40px Courier New'; this.ctx.textAlign = 'center';
+                this.ctx.fillText('LOJA DE UPGRADES', this.canvasWidth/2, 100);
+                this.ctx.font = '24px Courier New'; this.ctx.fillText('💰 100 moedas cada', this.canvasWidth/2, 140);
+
+                this.ctx.fillStyle = this.gameData.coins >= 100 ? '#44ff44' : '#666666';
+                this.ctx.fillRect(50, 200, 200, 50); 
+                this.ctx.fillStyle = '#000000'; this.ctx.fillText('🔥 CADÊNCIA', 150, 232);
+                this.ctx.fillStyle = '#ffffff'; this.ctx.font = '20px Courier New'; this.ctx.fillText(`NÍVEL ${this.gameData.upgrades.fireRate}`, 150, 255);
+
+                this.ctx.fillStyle = this.gameData.coins >= 100 ? '#44ff44' : '#666666';
+                this.ctx.fillRect(300, 200, 200, 50); 
+                this.ctx.fillStyle = '#000000'; this.ctx.fillText('📈 VEL. TIRO', 400, 232);
+                this.ctx.fillStyle = '#ffffff'; this.ctx.font = '20px Courier New'; this.ctx.fillText(`NÍVEL ${this.gameData.upgrades.projectileSpeed}`, 400, 255);
+
+                this.ctx.fillStyle = this.gameData.coins >= 100 ? '#44ff44' : '#666666';
+                this.ctx.fillRect(550, 200, 200, 50); 
+                this.ctx.fillStyle = '#000000'; this.ctx.fillText('⚔️ DANO', 650, 232);
+                this.ctx.fillStyle = '#ffffff'; this.ctx.font = '20px Courier New'; this.ctx.fillText(`NÍVEL ${this.gameData.upgrades.damage}`, 650, 255);
+
+                this.ctx.fillStyle = this.gameData.coins >= 100 ? '#44ff44' : '#666666';
+                this.ctx.fillRect(50, 350, 200, 50); 
+                this.ctx.fillStyle = '#000000'; this.ctx.fillText('🏃 VELOCIDADE', 150, 382);
+                this.ctx.fillStyle = '#ffffff'; this.ctx.font = '20px Courier New'; this.ctx.fillText(`NÍVEL ${this.gameData.upgrades.movement}`, 150, 405);
+
+                this.ctx.fillStyle = '#ff4444'; this.ctx.fillRect(650, 50, 100, 50);
+                this.ctx.fillStyle = '#ffffff'; this.ctx.fillText('← VOLTAR', 700, 82);
+            }
+
+            drawPlaying() {
+                this.player.draw(this.ctx, this.stars);
+                this.projectiles.forEach(p => p.draw(this.ctx));
+                this.enemies.forEach(e => e.draw(this.ctx));
+
+                this.ctx.fillStyle = '#00ffff'; this.ctx.font = 'bold 28px Courier New'; this.ctx.textAlign = 'left';
+                this.ctx.fillText(`FASE: ${this.currentLevel}`, 20, 40);
+                this.ctx.fillText(`Tempo: ${Math.ceil(this.victoryTimer)}s`, 20, 70);
+                this.ctx.fillText(`Inimigos: ${this.enemies.length}`, 20, 100);
+
+                this.ctx.textAlign = 'right';
+                this.ctx.fillText(`Moedas: ${this.gameData.coins}`, this.canvasWidth - 20, 40);
+            }
+
+            drawVictory() {
+                this.ctx.fillStyle = 'rgba(0,0,0,0.95)'; this.ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+                this.ctx.fillStyle = '#44ff44'; this.ctx.font = 'bold 52px Courier New'; this.ctx.textAlign = 'center';
+                this.ctx.fillText('VITÓRIA!', this.canvasWidth/2, 250);
+                this.ctx.font = 'bold 32px Courier New';
+                this.ctx.fillStyle = '#00ffff'; this.ctx.fillText(`FASE ${this.currentLevel} CONCLUÍDA`, this.canvasWidth/2, 300);
+                this.ctx.fillStyle = '#ffff00'; this.ctx.fillText(`+${100 * this.currentLevel} MOEDAS`, this.canvasWidth/2, 350);
+
+                this.ctx.fillStyle = '#44ff44'; this.ctx.fillRect(250, 400, 300, 50);
+                this.ctx.fillStyle = '#000000'; this.ctx.font = 'bold 28px Courier New'; this.ctx.fillText('PRÓXIMA FASE', this.canvasWidth/2, 432);
+                this.ctx.strokeStyle = '#ffffff'; this.ctx.lineWidth = 3; this.ctx.strokeRect(250, 400, 300, 50);
+
+                this.ctx.fillStyle = '#ff4444'; this.ctx.fillRect(this.canvasWidth - 200, 50, 150, 50);
+                this.ctx.fillStyle = '#ffffff'; this.ctx.fillText('MENU', this.canvasWidth - 125, 82);
+            }
+
+            drawGameOver() {
+                this.ctx.fillStyle = 'rgba(0,0,0,0.95)'; this.ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+                this.ctx.fillStyle = '#ff4444'; this.ctx.font = 'bold 52px Courier New'; this.ctx.textAlign = 'center';
+                this.ctx.fillText('DERROTA', this.canvasWidth/2, 280);
+                // ✅ MODIFICAÇÃO: Nova mensagem de derrota
+                this.ctx.font = 'bold 28px Courier New'; this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillText('Os aliens invadiram a terra,', this.canvasWidth/2, 330);
+                this.ctx.fillText('seus esforços não foram o suficiente...', this.canvasWidth/2, 365);
+
+                this.ctx.fillStyle = '#ff44ff'; this.ctx.fillRect(250, 400, 300, 50);
+                this.ctx.fillStyle = '#000000'; this.ctx.font = 'bold 28px Courier New'; this.ctx.fillText('TENTAR NOVAMENTE', this.canvasWidth/2, 432);
+                this.ctx.strokeStyle = '#ffffff'; this.ctx.lineWidth = 3; this.ctx.strokeRect(250, 400, 300, 50);
+
+                this.ctx.fillStyle = '#ff4444'; this.ctx.fillRect(this.canvasWidth - 200, 50, 150, 50);
+                this.ctx.fillStyle = '#ffffff'; this.ctx.fillText('MENU', this.canvasWidth - 125, 82);
+            }
+
+            gameLoop() {
+                this.update();
+                this.draw();
+                requestAnimationFrame(() => this.gameLoop());
+            }
+        }
+
+        // Inicialização
+        let gameManager;
+        window.addEventListener('load', () => {
+            gameManager = new GameManager();
+        });
+    </script>
+</body>
+</html>
