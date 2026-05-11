@@ -19,4 +19,7 @@ PC: `← → + ESPAÇO` | Mobile: Touch
  PC/Mobile responsivo  
  Save automático
 
+**AVISO:**
+vesão mobile esta com problemas de interface, porem funcional a gameplay
+
 **Feito Por: Vitor Rochinski S. G. Juvenal e Yasmin R. Kachel**
